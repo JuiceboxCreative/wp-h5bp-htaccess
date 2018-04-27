@@ -16,16 +16,16 @@ add_action('generate_rewrite_rules', __NAMESPACE__ . '\\ApacheServerConfig::init
 class ApacheServerConfig {
   const MARKER = 'Roots Server Config';
   const TEXT_DOMAIN = 'roots';
-  
+
   private static $instance;
-  
+
   public static $rules_filters = [];
 
   protected static $mod_rewrite_enabled;
   protected static $home_path;
   protected static $wp_htaccess_file;
   protected static $roots_htaccess_file;
-  
+
   protected $errors = [];
 
   public static function init() {
@@ -34,19 +34,19 @@ class ApacheServerConfig {
     }
     return self::$instance;
   }
-  
+
   protected function __construct() {
     require_once ABSPATH . '/wp-admin/includes/file.php';
     require_once ABSPATH . '/wp-admin/includes/misc.php';
-    
+
     self::$mod_rewrite_enabled = got_mod_rewrite();
-    self::$home_path = get_home_path();
+    self::$home_path = str_replace('/wp', '', ABSPATH);
     self::$wp_htaccess_file = self::$home_path . '.htaccess';
     self::$roots_htaccess_file = locate_template(['server_configs.conf', 'h5bp-htaccess.conf']);
     if (!self::$roots_htaccess_file) {
       self::$roots_htaccess_file = __DIR__ . '/h5bp-htaccess.conf';
     }
-    
+
     if (!$this->verifySetup()) {
       $this->alerts();
     } else {
@@ -54,7 +54,7 @@ class ApacheServerConfig {
       $this->write();
     }
   }
-  
+
   public static function setRulesFilters() {
     $home_url = parse_url(is_multisite() ? network_home_url('/') : home_url('/'));
     extract($home_url);
@@ -66,32 +66,39 @@ class ApacheServerConfig {
     ];
     self::$rules_filters = apply_filters('roots/h5bp-htaccess-filters', self::$rules_filters);
   }
-  
+
   protected function verifySetup() {
     if (!get_option('permalink_structure')) {
       $this->errors[] = sprintf(__('Please enable %s.', self::TEXT_DOMAIN), '<a href="' . admin_url('options-permalink.php') . '">Permalinks</a>');
     }
-    
+
     if (!$this->isWritable()) {
       $this->errors[] = sprintf(__('Please make sure your %s file is writable.', self::TEXT_DOMAIN), '<a href="' . admin_url('options-permalink.php') . '">.htaccess</a>');
     }
-    
+
     if (!self::$mod_rewrite_enabled) {
       $this->errors[] = sprintf(__('Please enable %s.', self::TEXT_DOMAIN), '<a target="_blank" href="http://httpd.apache.org/docs/current/rewrite/">Apache mod_rewrite</a>');
     }
-    
+
     if (!file_exists(self::$roots_htaccess_file)) {
       $this->errors[] = sprintf(__('Cannot find the file %s.', self::TEXT_DOMAIN), self::$roots_htaccess_file);
     }
-    
+
     return empty($this->errors);
   }
-  
+
   protected function isWritable() {
     return is_writable(self::$home_path) || (file_exists(self::$wp_htaccess_file) && is_writable(self::$wp_htaccess_file));
   }
-  
+
   protected function write() {
+    global $wp_rewrite;
+
+    if ((!file_exists(self::$wp_htaccess_file) && is_writable(self::$home_path) && $wp_rewrite->using_mod_rewrite_permalinks()) || is_writable(self::$wp_htaccess_file)) {
+      $rules = explode("\n", $wp_rewrite->mod_rewrite_rules());
+      insert_with_markers(self::$wp_htaccess_file, 'WordPress', $rules);
+    }
+
     $server_config_rules = extract_from_markers(self::$wp_htaccess_file, self::MARKER);
     if (empty($server_config_rules)) {
       $server_config_rules = implode('', file(self::$roots_htaccess_file));
@@ -100,7 +107,7 @@ class ApacheServerConfig {
       insert_with_markers(self::$wp_htaccess_file, self::MARKER, explode(PHP_EOL, $server_config_rules));
     }
   }
-  
+
   public function alerts() {
     $alert = function ($message) {
       echo '<div class="error"><p>' . $message . '</p></div>';
