@@ -40,7 +40,7 @@ class ApacheServerConfig {
     require_once ABSPATH . '/wp-admin/includes/misc.php';
 
     self::$mod_rewrite_enabled = got_mod_rewrite();
-    self::$home_path = str_replace('/wp', '', ABSPATH);
+    self::$home_path = self:: str_lreplace('/wp/', '/', ABSPATH);
     self::$wp_htaccess_file = self::$home_path . '.htaccess';
     self::$roots_htaccess_file = locate_template(['server_configs.conf', 'h5bp-htaccess.conf']);
     if (!self::$roots_htaccess_file) {
@@ -117,5 +117,16 @@ class ApacheServerConfig {
         array_map($alert, $this->errors);
       });
     }
+  }
+
+  private static function str_lreplace($search, $replace, $subject)
+  {
+    $pos = strrpos($subject, $search);
+
+    if ($pos !== false) {
+        $subject = substr_replace($subject, $replace, $pos, strlen($search));
+    }
+
+    return $subject;
   }
 }
